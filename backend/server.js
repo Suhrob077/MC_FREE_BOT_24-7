@@ -57,12 +57,16 @@ function freshState() {
     username: null,
     authMode: null,
     version: null,
+    detectedVersion: null,
+    versionWarning: null,
     startedAt: null,
     durationMinutes: null,
     stopTimer: null,
     reconnectInterval: null,
+    antiAfkInterval: null,
     msaLogin: null,
     lastError: null,
+    lastErrorDetail: null,
   };
 }
  
@@ -71,6 +75,7 @@ function stopBot(sessionId) {
   if (!session) return;
   if (session.state.stopTimer) clearTimeout(session.state.stopTimer);
   if (session.state.reconnectInterval) clearInterval(session.state.reconnectInterval);
+  if (session.state.antiAfkInterval) clearInterval(session.state.antiAfkInterval);
   if (session.bot) {
     try {
       session.bot.quit();
@@ -86,7 +91,7 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
     host,
     port: port || 25565,
     username: username || "AFKBot",
-    version: version || false, // false = auto-detect
+    version: !version || version === "" ? false : version, // false = auto-detect
     auth: authMode === "premium" ? "microsoft" : "offline",
   };
  
@@ -98,14 +103,57 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
   }
  
   const newBot = mineflayer.createBot(options);
- 
+  
+  // Anti-AFK: Shaxsi harakat va amallar
+  let antiAfkInterval = null;
+  
   newBot.once("spawn", () => {
     const s = sessions.get(sessionId);
     if (!s) return;
     s.state.status = "online";
     s.state.msaLogin = null;
     s.state.lastError = null;
-    console.log(`[${sessionId}] ✅ Online: ${host}:${port} as ${username}`);
+    
+    // Haqiqiy serverning versiyasini olamiz
+    const detectedVersion = newBot.version;
+    const givenVersion = options.version;
+    if (givenVersion && givenVersion !== "false" && detectedVersion !== givenVersion) {
+      s.state.versionWarning = `⚠️ Tanglangan: ${givenVersion} | Haqiqiy: ${detectedVersion}`;
+      console.log(`[${sessionId}] ${s.state.versionWarning}`);
+    } else if (!givenVersion || givenVersion === "false") {
+      s.state.detectedVersion = detectedVersion;
+      console.log(`[${sessionId}] 🔍 Auto-detect: ${detectedVersion}`);
+    }
+    
+    console.log(`[${sessionId}] ✅ ONLINE: ${host}:${port} as ${username}`);
+    
+    // Anti-AFK Harakat (30 soniyada bir bor)
+    antiAfkInterval = setInterval(() => {
+      if (newBot && newBot.player && newBot.player.entity) {
+        try {
+          // Tasodifiy yunda qarab turish
+          const yaw = Math.random() * Math.PI * 2;
+          const pitch = Math.random() * Math.PI - Math.PI / 2;
+          newBot.look(yaw, pitch, false);
+          
+          // Tasodifiy jump
+          if (Math.random() > 0.5) {
+            newBot.setControlState('jump', true);
+            setTimeout(() => newBot.setControlState('jump', false), 100);
+          }
+          
+          // Tasodifiy harakat
+          if (Math.random() > 0.5) {
+            newBot.setControlState('forward', true);
+            setTimeout(() => newBot.setControlState('forward', false), 200);
+          }
+          
+          console.log(`[${sessionId}] 🎮 Anti-AFK: harakat`);
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }, 30000); // 30 soniya
   });
  
   newBot.on("kicked", (reason) => {
@@ -117,17 +165,33 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
     if (reasonStr.includes("whitelist")) errorCode = "whitelist_denied";
     else if (reasonStr.includes("ban")) errorCode = "banned";
     else if (reasonStr.includes("outdated")) errorCode = "kicked_outdated_client";
+    else if (reasonStr.includes("version")) errorCode = "version_mismatch";
     s.state.lastError = errorCode;
     console.log(`[${sessionId}] ⛔ Kicked:`, reason);
+    if (antiAfkInterval) clearInterval(antiAfkInterval);
   });
  
   newBot.on("error", (err) => {
     const s = sessions.get(sessionId);
     if (!s) return;
     s.state.status = "error";
-    const errorCode = mapErrorToCode(err);
+    
+    // Aternos-specific errors
+    let errorCode = mapErrorToCode(err);
+    const errMsg = err.message || err.code || "";
+    
+    if (errMsg.includes("Aternos") || errMsg.includes("aternos")) {
+      errorCode = "aternos_offline";
+    } else if (errMsg.includes("offline")) {
+      errorCode = "server_offline";
+    } else if (errMsg.includes("refuses") || errMsg.includes("refused")) {
+      errorCode = "connection_refused";
+    }
+    
     s.state.lastError = errorCode;
-    console.log(`[${sessionId}] ❌ Error (${errorCode}):`, err.message);
+    s.state.lastErrorDetail = errMsg;
+    console.log(`[${sessionId}] ❌ Error (${errorCode}): ${errMsg}`);
+    if (antiAfkInterval) clearInterval(antiAfkInterval);
   });
  
   newBot.on("end", () => {
@@ -135,9 +199,16 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
     if (!s) return;
     if (s.state.status !== "offline") {
       s.state.status = "reconnecting";
-      console.log(`[${sessionId}] 🔄 Disconnected, retrying...`);
+      console.log(`[${sessionId}] 🔄 Ulanish uzildi, qayta ulanmoq...`);
     }
+    if (antiAfkInterval) clearInterval(antiAfkInterval);
   });
+  
+  // Store antiAfkInterval so we can clear it when stopping
+  const state = sessions.get(sessionId);
+  if (state) {
+    state.state.antiAfkInterval = antiAfkInterval;
+  }
  
   return newBot;
 }
@@ -151,9 +222,8 @@ app.post("/api/bot/start", (req, res) => {
     return res.status(400).json({ error: "invalid_host" });
   }
 
-  if (!version || version.trim() === "") {
-    return res.status(400).json({ error: "version_required" });
-  }
+  // Version endi ixtiyoriy (auto-detect uchun)
+  const versionToUse = version && version.trim() !== "" ? version.trim() : null;
 
   // Validate username length
   if (username.length < 3 || username.length > 16) {
@@ -178,12 +248,16 @@ app.post("/api/bot/start", (req, res) => {
   state.port = portNum;
   state.username = username;
   state.authMode = authMode === "premium" ? "premium" : "cracked";
-  state.version = version || null;
+  state.version = versionToUse; // null = auto-detect
+  state.detectedVersion = null; // Server'ning haqiqiy versiyasi
+  state.versionWarning = null; // Versiya farqi haqida ogohlantirish
   state.status = "connecting";
   state.startedAt = Date.now();
   state.durationMinutes = durationMinutes ? Number(durationMinutes) : null;
 
   try {
+    console.log(`[${sessionId}] 🤖 Bot ishga tushmoqda: ${host}:${portNum} | Versiya: ${versionToUse || 'Auto-detect'} | Turi: ${state.authMode}`);
+    
     const bot = spawnBot(
       { host: state.host, port: state.port, username: state.username, authMode: state.authMode, version: state.version },
       sessionId
@@ -191,19 +265,19 @@ app.post("/api/bot/start", (req, res) => {
 
     sessions.set(sessionId, { bot, state });
 
-    // Reconnection interval
+    // Reconnection interval - Har 30 soniyada tekshirish
     state.reconnectInterval = setInterval(() => {
       const s = sessions.get(sessionId);
       if (!s) return;
       const notConnected = !s.bot || !s.bot._client || s.bot._client.ended;
       if (s.state.status !== "offline" && notConnected) {
-        console.log(`[${sessionId}] Reconnecting...`);
+        console.log(`[${sessionId}] 🔄 Ulanish uzilgan, qayta ulanmoq...`);
         s.bot = spawnBot(
           { host: s.state.host, port: s.state.port, username: s.state.username, authMode: s.state.authMode, version: s.state.version },
           sessionId
         );
       }
-    }, 30 * 60 * 1000);
+    }, 30 * 1000); // 30 sekund
 
     // Duration timer
     if (state.durationMinutes) {
@@ -262,7 +336,7 @@ function publicState(sessionId) {
       "authentication_failed": "Autentifikatsiya muvaffaqiyatsiz",
       "server_error": "Server xatosi",
     };
-    lastErrorDisplay = errorMap[s.state.lastError] || s.state.lastError;
+    lastErrorDisplay = errorMap[s.state.lastError] || ("❌ " + s.state.lastError);
   }
   
   return {
@@ -272,10 +346,13 @@ function publicState(sessionId) {
     username: s.state.username,
     authMode: s.state.authMode,
     version: s.state.version,
+    detectedVersion: s.state.detectedVersion,
+    versionWarning: s.state.versionWarning,
     startedAt: s.state.startedAt,
     durationMinutes: s.state.durationMinutes,
     msaLogin: s.state.msaLogin,
     lastError: lastErrorDisplay,
+    lastErrorDetail: s.state.lastErrorDetail,
   };
 }
  
