@@ -8,11 +8,13 @@
   :root {
     --bg: #1b1f1a;
     --panel: #24291f;
+    --panel2: #1f2418;
     --accent: #7ec850;
     --accent-dark: #5a9c34;
     --text: #eef1e8;
     --muted: #9aa590;
     --danger: #d9534f;
+    --warn: #e0b93a;
   }
   * { box-sizing: border-box; }
   body {
@@ -20,36 +22,34 @@
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background: var(--bg);
     color: var(--text);
-    display: flex;
-    justify-content: center;
-    padding: 40px 16px;
+    padding: 24px 16px 60px;
   }
+  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }
+  p.subtitle { text-align: center; color: var(--muted); margin: 0 0 8px; font-size: 13px; }
+  p.capacity { text-align: center; color: var(--muted); margin: 0 0 24px; font-size: 12px; }
+
+  .layout {
+    max-width: 1000px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
   .card {
     background: var(--panel);
     border-radius: 12px;
-    padding: 28px;
-    width: 100%;
-    max-width: 440px;
+    padding: 24px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   }
-  h1 {
-    font-size: 22px;
-    margin: 0 0 4px;
-    text-align: center;
-  }
-  p.subtitle {
-    text-align: center;
-    color: var(--muted);
-    margin: 0 0 24px;
-    font-size: 13px;
-  }
-  label {
-    display: block;
-    font-size: 13px;
-    margin: 14px 0 6px;
-    color: var(--muted);
-  }
-  input[type=text], input[type=number] {
+  .card h2 { font-size: 15px; margin: 0 0 16px; color: var(--accent); }
+
+  label { display: block; font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
+  input[type=text], input[type=number], select {
     width: 100%;
     padding: 10px 12px;
     border-radius: 8px;
@@ -58,126 +58,139 @@
     color: var(--text);
     font-size: 14px;
   }
-  .toggle-group {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
-  }
+  .toggle-group { display: flex; gap: 8px; margin-top: 6px; }
   .toggle-group button {
-    flex: 1;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #3a4130;
-    background: #171b13;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 13px;
+    flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #3a4130;
+    background: #171b13; color: var(--muted); cursor: pointer; font-size: 13px;
   }
-  .toggle-group button.active {
-    background: var(--accent-dark);
-    color: #fff;
-    border-color: var(--accent-dark);
-  }
-  .actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 22px;
-  }
-  button.primary, button.stop {
-    flex: 1;
-    padding: 12px;
-    border-radius: 8px;
-    border: none;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+  .toggle-group button.active { background: var(--accent-dark); color: #fff; border-color: var(--accent-dark); }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button.primary, button.stop, button.ghost {
+    flex: 1; padding: 12px; border-radius: 8px; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
   }
   button.primary { background: var(--accent); color: #10230a; }
   button.primary:hover { background: var(--accent-dark); color: #fff; }
   button.stop { background: var(--danger); color: #fff; }
   button.stop:hover { background: #b8433f; }
-  .status-box {
-    margin-top: 22px;
-    padding: 14px;
-    border-radius: 8px;
-    background: #171b13;
-    font-size: 13px;
-    line-height: 1.6;
+  button.ghost { background: #171b13; color: var(--muted); border: 1px solid #3a4130; }
+  button.ghost:hover { color: var(--text); }
+
+  .footnote { margin-top: 16px; font-size: 11px; color: var(--muted); text-align: center; }
+
+  /* Bot list */
+  .bot-item {
+    background: var(--panel2);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border: 1px solid #333c28;
   }
-  .dot {
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    margin-right: 6px;
+  .bot-item-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .bot-item-title { font-weight: 600; font-size: 14px; }
+  .bot-item-info { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+  .bot-item-btns { display: flex; gap: 6px; margin-top: 10px; }
+  .bot-item-btns button {
+    padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #3a4130;
+    background: #171b13; color: var(--muted); cursor: pointer;
   }
+  .bot-item-btns button:hover { color: var(--text); }
+  .bot-item-btns button.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  .empty-state { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 10px; }
+
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
   .dot.online { background: var(--accent); }
   .dot.offline { background: #666; }
   .dot.error { background: var(--danger); }
-  .dot.connecting, .dot.reconnecting { background: #e0b93a; }
+  .dot.connecting, .dot.reconnecting { background: var(--warn); }
+
   .msa-box {
-    margin-top: 10px;
-    padding: 10px;
-    border-radius: 8px;
-    background: #2a2412;
-    border: 1px solid #6b5a1c;
-    font-size: 13px;
+    margin-top: 10px; padding: 10px; border-radius: 8px;
+    background: #2a2412; border: 1px solid #6b5a1c; font-size: 12px;
   }
   a { color: var(--accent); }
-  .footnote {
-    margin-top: 18px;
-    font-size: 11px;
-    color: var(--muted);
-    text-align: center;
-  }
 </style>
 </head>
 <body>
 
-<div class="card">
-  <h1>⛏️ Minecraft AFK Bot</h1>
-  <p class="subtitle">Serveringizga bot yuboring, u doim online turadi</p>
+<h1>⛏️ Minecraft AFK Bot</h1>
+<p class="subtitle">Serveringizga bot yuboring, u doim online turadi</p>
+<p class="capacity" id="capacityText">Serverda band: yuklanmoqda...</p>
 
-  <label>Server IP / manzil</label>
-  <input type="text" id="host" placeholder="masalan: play.example.net" />
+<div class="layout">
 
-  <label>Port (ixtiyoriy, default 25565)</label>
-  <input type="number" id="port" placeholder="25565" />
+  <!-- LEFT: form -->
+  <div class="card">
+    <h2 id="formTitle">Yangi bot qo'shish</h2>
 
-  <label>Bot nickname</label>
-  <input type="text" id="username" placeholder="AFKBot123" />
+    <label>Server IP / manzil</label>
+    <input type="text" id="host" placeholder="masalan: play.example.net" />
 
-  <label>Server turi</label>
-  <div class="toggle-group">
-    <button type="button" id="btnCracked" class="active" onclick="setAuth('cracked')">Cracked</button>
-    <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
+    <label>Port (ixtiyoriy, default 25565)</label>
+    <input type="number" id="port" placeholder="25565" />
+
+    <label>Bot nickname</label>
+    <input type="text" id="username" placeholder="AFKBot123" />
+
+    <label>Server turi</label>
+    <div class="toggle-group">
+      <button type="button" id="btnCracked" class="active" onclick="setAuth('cracked')">Cracked</button>
+      <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
+    </div>
+
+    <label>Minecraft versiyasi</label>
+    <select id="version">
+      <option value="">Avtomatik aniqlash (tavsiya etiladi)</option>
+      <option value="1.8.9">1.8.9</option>
+      <option value="1.12.2">1.12.2</option>
+      <option value="1.16.5">1.16.5</option>
+      <option value="1.18.2">1.18.2</option>
+      <option value="1.19.4">1.19.4</option>
+      <option value="1.20.4">1.20.4</option>
+      <option value="1.20.6">1.20.6</option>
+      <option value="1.21">1.21</option>
+      <option value="1.21.4">1.21.4</option>
+    </select>
+
+    <label>Qancha vaqt ulanib tursin? (daqiqa, bo'sh = cheksiz)</label>
+    <input type="number" id="duration" placeholder="masalan: 120" />
+
+    <div class="actions">
+      <button class="primary" id="startBtn" onclick="handleStart()">▶ Start</button>
+      <button class="ghost" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Bekor qilish</button>
+    </div>
+
+    <div class="footnote">
+      Backend manzili: <code id="apiBaseDisplay"></code>
+    </div>
   </div>
 
-  <label>Qancha vaqt ulanib tursin? (daqiqa, bo'sh = cheksiz)</label>
-  <input type="number" id="duration" placeholder="masalan: 120" />
-
-  <div class="actions">
-    <button class="primary" onclick="startBot()">▶ Start</button>
-    <button class="stop" onclick="stopBot()">■ Stop</button>
+  <!-- RIGHT: bot list -->
+  <div class="card">
+    <h2>Sizning botlaringiz</h2>
+    <div id="botList"></div>
   </div>
 
-  <div class="status-box" id="statusBox">
-    <span class="dot offline"></span> Holat: yuklanmoqda...
-  </div>
-
-  <div class="footnote">
-    Backend manzilini <code>API_BASE</code> o'zgaruvchisida sozlang (script pastida)
-  </div>
 </div>
 
 <script>
   // ⚠️ IMPORTANT: change this to your own backend URL (Northflank public URL)
   const API_BASE = "https://p01--mcfree--z9mrk5ztwk2d.code.run";
+  document.getElementById("apiBaseDisplay").textContent = API_BASE;
 
-  // Unique ID per browser tab/session, so each user controls only their own bot
-  const sessionId = crypto.randomUUID();
-
+  const STORAGE_KEY = "mcAfkBots";
   let authMode = "cracked";
+  let editingId = null; // sessionId currently being edited, or null = new bot
+
+  function loadBots() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function saveBots(list) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  }
 
   function setAuth(mode) {
     authMode = mode;
@@ -185,88 +198,201 @@
     document.getElementById("btnPremium").classList.toggle("active", mode === "premium");
   }
 
-  async function startBot() {
-    const host = document.getElementById("host").value.trim();
-    const port = document.getElementById("port").value.trim();
-    const username = document.getElementById("username").value.trim();
-    const duration = document.getElementById("duration").value.trim();
+  function readForm() {
+    return {
+      host: document.getElementById("host").value.trim(),
+      port: document.getElementById("port").value.trim(),
+      username: document.getElementById("username").value.trim(),
+      version: document.getElementById("version").value,
+      duration: document.getElementById("duration").value.trim(),
+      authMode,
+    };
+  }
 
-    if (!host || !username) {
+  function fillForm(entry) {
+    document.getElementById("host").value = entry.host || "";
+    document.getElementById("port").value = entry.port || "";
+    document.getElementById("username").value = entry.username || "";
+    document.getElementById("version").value = entry.version || "";
+    document.getElementById("duration").value = entry.duration || "";
+    setAuth(entry.authMode || "cracked");
+  }
+
+  function clearForm() {
+    document.getElementById("host").value = "";
+    document.getElementById("port").value = "";
+    document.getElementById("username").value = "";
+    document.getElementById("version").value = "";
+    document.getElementById("duration").value = "";
+    setAuth("cracked");
+  }
+
+  async function callStart(entry) {
+    const res = await fetch(`${API_BASE}/api/bot/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: entry.id,
+        host: entry.host,
+        port: entry.port ? Number(entry.port) : undefined,
+        username: entry.username,
+        authMode: entry.authMode,
+        version: entry.version || undefined,
+        durationMinutes: entry.duration ? Number(entry.duration) : undefined,
+      }),
+    });
+    return res.json();
+  }
+
+  async function handleStart() {
+    const form = readForm();
+    if (!form.host || !form.username) {
       alert("Server IP va nickname kiritish shart!");
       return;
     }
 
+    const id = editingId || crypto.randomUUID();
+    const entry = { id, ...form };
+
+    let list = loadBots();
+    const idx = list.findIndex(b => b.id === id);
+    if (idx >= 0) list[idx] = entry; else list.push(entry);
+    saveBots(list);
+
     try {
-      const res = await fetch(`${API_BASE}/api/bot/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          host,
-          port: port ? Number(port) : undefined,
-          username,
-          authMode,
-          durationMinutes: duration ? Number(duration) : undefined,
-        }),
-      });
-      const data = await res.json();
-      console.log(data);
+      await callStart(entry);
     } catch (e) {
       alert("Backend'ga ulanib bo'lmadi. API_BASE manzilini tekshiring.");
     }
+
+    cancelEdit();
+    renderList();
   }
 
-  async function stopBot() {
+  async function stopBotEntry(id) {
     try {
       await fetch(`${API_BASE}/api/bot/stop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: id }),
       });
+    } catch (e) { /* ignore */ }
+    renderList();
+  }
+
+  async function reconnectEntry(id) {
+    const list = loadBots();
+    const entry = list.find(b => b.id === id);
+    if (!entry) return;
+    try {
+      await callStart(entry);
     } catch (e) {
       alert("Backend'ga ulanib bo'lmadi.");
     }
+    renderList();
   }
 
-  function renderStatus(s) {
-    const box = document.getElementById("statusBox");
-    const dotClass = s.status || "offline";
-    let html = `<span class="dot ${dotClass}"></span> Holat: <b>${s.status}</b><br>`;
-    if (s.host) html += `Server: ${s.host}:${s.port}<br>`;
-    if (s.username) html += `Bot: ${s.username} (${s.authMode})<br>`;
-    if (s.durationMinutes) html += `Davomiylik: ${s.durationMinutes} daqiqa<br>`;
-    if (s.lastError) html += `Xato: ${s.lastError}<br>`;
-    box.innerHTML = html;
-
-    // Show Microsoft device login prompt if needed
-    let msaBox = document.getElementById("msaBox");
-    if (s.msaLogin) {
-      if (!msaBox) {
-        msaBox = document.createElement("div");
-        msaBox.id = "msaBox";
-        msaBox.className = "msa-box";
-        box.after(msaBox);
-      }
-      msaBox.innerHTML = `Microsoft hisobga kirish kerak:<br>
-        <a href="${s.msaLogin.url}" target="_blank">${s.msaLogin.url}</a><br>
-        Kod: <b>${s.msaLogin.code}</b>`;
-    } else if (msaBox) {
-      msaBox.remove();
-    }
+  function editEntry(id) {
+    const list = loadBots();
+    const entry = list.find(b => b.id === id);
+    if (!entry) return;
+    editingId = id;
+    fillForm(entry);
+    document.getElementById("formTitle").textContent = "Botni tahrirlash";
+    document.getElementById("cancelEditBtn").style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function pollStatus() {
+  function cancelEdit() {
+    editingId = null;
+    clearForm();
+    document.getElementById("formTitle").textContent = "Yangi bot qo'shish";
+    document.getElementById("cancelEditBtn").style.display = "none";
+  }
+
+  function removeEntry(id) {
+    stopBotEntry(id);
+    let list = loadBots().filter(b => b.id !== id);
+    saveBots(list);
+    renderList();
+  }
+
+  function statusLabel(s) {
+    const map = {
+      online: "Online",
+      offline: "Offline",
+      connecting: "Ulanmoqda...",
+      reconnecting: "Qayta ulanmoqda...",
+      error: "Xato",
+    };
+    return map[s] || s;
+  }
+
+  async function fetchStatus(id) {
     try {
-      const res = await fetch(`${API_BASE}/api/bot/status?sessionId=${sessionId}`);
-      const data = await res.json();
-      renderStatus(data);
+      const res = await fetch(`${API_BASE}/api/bot/status?sessionId=${id}`);
+      return await res.json();
     } catch (e) {
-      renderStatus({ status: "offline (backend topilmadi)" });
+      return { status: "offline" };
     }
   }
 
-  pollStatus();
-  setInterval(pollStatus, 5000);
+  async function renderList() {
+    const list = loadBots();
+    const container = document.getElementById("botList");
+
+    if (list.length === 0) {
+      container.innerHTML = `<div class="empty-state">Hali bot qo'shmagansiz.<br>Chapdagi forma orqali birinchi botingizni qo'shing.</div>`;
+      return;
+    }
+
+    const statuses = await Promise.all(list.map(b => fetchStatus(b.id)));
+
+    container.innerHTML = list.map((entry, i) => {
+      const s = statuses[i];
+      const dotClass = s.status || "offline";
+      let msa = "";
+      if (s.msaLogin) {
+        msa = `<div class="msa-box">Microsoft hisobga kirish kerak:<br>
+          <a href="${s.msaLogin.url}" target="_blank">${s.msaLogin.url}</a><br>
+          Kod: <b>${s.msaLogin.code}</b></div>`;
+      }
+      return `
+        <div class="bot-item">
+          <div class="bot-item-head">
+            <div class="bot-item-title">${entry.username || "AFKBot"}</div>
+            <div><span class="dot ${dotClass}"></span>${statusLabel(s.status)}</div>
+          </div>
+          <div class="bot-item-info">
+            Server: ${entry.host}${entry.port ? ":" + entry.port : ""}<br>
+            Turi: ${entry.authMode === "premium" ? "Premium" : "Cracked"}${entry.version ? " · v" + entry.version : " · avto-versiya"}
+            ${s.lastError ? `<br>Xato: ${s.lastError}` : ""}
+          </div>
+          ${msa}
+          <div class="bot-item-btns">
+            <button onclick="reconnectEntry('${entry.id}')">↻ Qayta ulash</button>
+            <button onclick="stopBotEntry('${entry.id}')">■ To'xtatish</button>
+            <button onclick="editEntry('${entry.id}')">✎ Tahrirlash</button>
+            <button class="danger" onclick="removeEntry('${entry.id}')">🗑 O'chirish</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  async function refreshCapacity() {
+    try {
+      const res = await fetch(`${API_BASE}/api/bot/count`);
+      const data = await res.json();
+      document.getElementById("capacityText").textContent = `Serverda band: ${data.active} / ${data.max} bot`;
+    } catch (e) {
+      document.getElementById("capacityText").textContent = "Serverda band: noma'lum";
+    }
+  }
+
+  renderList();
+  refreshCapacity();
+  setInterval(renderList, 5000);
+  setInterval(refreshCapacity, 10000);
 </script>
 
 </body>
