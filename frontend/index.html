@@ -148,9 +148,9 @@
       <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
     </div>
 
-    <label style="color: var(--danger);">Minecraft versiyasi * (majburiy)</label>
+    <label>Minecraft Versiyasi (ixtiyoriy - automatik aniqlash)</label>
     <select id="version">
-      <option value="">Versiyani tanlang...</option>
+      <option value="">Avtomatik aniqlash ← Tavsiya etiladi</option>
       <option value="1.12.2">1.12.2</option>
       <option value="1.13.2">1.13.2</option>
       <option value="1.14.4">1.14.4</option>
@@ -352,10 +352,7 @@
       showError("Server IP va nickname kiritish shart!");
       return;
     }
-    if (!form.version) {
-      showError("Minecraft versiyasini majburiy tanlang!");
-      return;
-    }
+    // Version endi ixtiyoriy - avtomatik aniqlash ishlatiladi
 
     const id = editingId || crypto.randomUUID();
     const entry = { id, ...form };
@@ -476,7 +473,9 @@
           <div class="bot-item-info">
             Server: ${entry.host}${entry.port ? ":" + entry.port : ""}<br>
             Turi: ${entry.authMode === "premium" ? "Premium" : "Cracked"}${entry.version ? " · v" + entry.version : " · avto-versiya"}
-            ${s.lastError ? `<br>Xato: ${s.lastError}` : ""}
+            ${s.detectedVersion ? `<br>🔍 Haqiqiy versiya: <b>${s.detectedVersion}</b>` : ""}
+            ${s.versionWarning ? `<br>${s.versionWarning}` : ""}
+            ${s.lastError ? `<br>${s.lastError}` : ""}
           </div>
           ${msa}
           <div class="bot-item-btns">
