@@ -111,6 +111,11 @@
     background: #2a2412; border: 1px solid #6b5a1c; font-size: 12px;
   }
   a { color: var(--accent); }
+
+  @keyframes slideIn {
+    from { transform: translateX(400px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -131,8 +136,11 @@
     <label>Port (ixtiyoriy, default 25565)</label>
     <input type="number" id="port" placeholder="25565" />
 
-    <label>Bot nickname</label>
-    <input type="text" id="username" placeholder="AFKBot123" />
+    <label>Bot nickname (yoki " 🎲 Tasodifiy" bosing)</label>
+    <div style="display: flex; gap: 8px;">
+      <input type="text" id="username" placeholder="AFKBot123" />
+      <button type="button" class="ghost" onclick="generateRandomNick()" style="flex: 0 0 auto; padding: 10px 14px;">🎲</button>
+    </div>
 
     <label>Server turi</label>
     <div class="toggle-group">
@@ -140,18 +148,36 @@
       <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
     </div>
 
-    <label>Minecraft versiyasi</label>
+    <label style="color: var(--danger);">Minecraft versiyasi * (majburiy)</label>
     <select id="version">
-      <option value="">Avtomatik aniqlash (tavsiya etiladi)</option>
-      <option value="1.8.9">1.8.9</option>
+      <option value="">Versiyani tanlang...</option>
       <option value="1.12.2">1.12.2</option>
+      <option value="1.13.2">1.13.2</option>
+      <option value="1.14.4">1.14.4</option>
+      <option value="1.15.2">1.15.2</option>
       <option value="1.16.5">1.16.5</option>
+      <option value="1.17.1">1.17.1</option>
       <option value="1.18.2">1.18.2</option>
+      <option value="1.19.2">1.19.2</option>
       <option value="1.19.4">1.19.4</option>
+      <option value="1.20.1">1.20.1</option>
       <option value="1.20.4">1.20.4</option>
       <option value="1.20.6">1.20.6</option>
       <option value="1.21">1.21</option>
+      <option value="1.21.1">1.21.1</option>
       <option value="1.21.4">1.21.4</option>
+      <option value="1.21.11">1.21.11</option>
+      <option value="1.22">1.22</option>
+      <option value="1.22.1">1.22.1</option>
+      <option value="1.23">1.23</option>
+      <option value="1.23.1">1.23.1</option>
+      <option value="1.24">1.24</option>
+      <option value="1.24.1">1.24.1</option>
+      <option value="1.25">1.25</option>
+      <option value="1.25.1">1.25.1</option>
+      <option value="1.26">1.26</option>
+      <option value="1.26.1">1.26.1</option>
+      <option value="1.26.2">1.26.2</option>
     </select>
 
     <label>Qancha vaqt ulanib tursin? (daqiqa, bo'sh = cheksiz)</label>
@@ -183,6 +209,82 @@
   const STORAGE_KEY = "mcAfkBots";
   let authMode = "cracked";
   let editingId = null; // sessionId currently being edited, or null = new bot
+
+  // 🎮 GAMING-STYLE RANDOM NICKNAMES
+  const randomNicknames = [
+    "DragonSlayer", "CreeperKing", "EnderMaster", "NetherKing", "SkyWalker",
+    "PixelPro", "BlockHunter", "MineGod", "CaveExplorer", "SteveMaster",
+    "DirtDigger", "IronFinder", "GoldRusher", "LavaWalker", "FrostByte",
+    "ShadowNinja", "PhantomRider", "SkeletonSlayer", "ZombieKiller", "SpiderHunter",
+    "PumpkinKing", "WitchHunter", "HuskarBrave", "RiddleStone", "FoxFriend",
+    "ArmadilloRider", "BeeKeeper", "VillagerDealer", "FarmMaster", "BuilderPro",
+    "RedstoneGod", "CommandMaster", "ModBuilder", "MapArtist", "ParkourKing",
+    "PvPLord", "SurvivalPro", "AdventureSeeker", "TreasureHunter", "TempleRaider",
+    "BattleCry", "NoobSlayer", "PROgamer", "LagFighter", "CubeMaster"
+  ];
+
+  function generateRandomNick() {
+    const nick = randomNicknames[Math.floor(Math.random() * randomNicknames.length)] + 
+                 Math.floor(Math.random() * 1000);
+    document.getElementById("username").value = nick;
+  }
+
+  // 🚨 UZBEK ERROR MESSAGES (30+ xatolar)
+  const uzbekErrorMessages = {
+    "invalid_host": "❌ Server IP/manzili noto'g'ri yoki bo'sh!",
+    "invalid_port": "❌ Port raqami noto'g'ri (1-65535 oralig'ida bo'lishi kerak)",
+    "invalid_username": "❌ Foydalanuvchi nomi 3-16 belgidan iborat bo'lishi kerak",
+    "version_required": "❌ Minecraft versiyasini tanlab olish majburiy!",
+    "version_not_supported": "❌ Bu versiya taqdim qilinmagan yoki qo'llanmaydi",
+    "connection_refused": "❌ Server ulanishni rad etdi. Server online ekanligini tekshiring.",
+    "timeout": "❌ Ulanish vaqti tugadi. Server juda uzoq yoki offline!",
+    "network_error": "❌ Tarmoq xatosi. Internet ulanishingizni tekshiring.",
+    "invalid_credentials": "❌ Foydalanuvchi nomi yoki parol noto'g'ri (Premium)!",
+    "server_full": "❌ Server to'lgan. Ba'zi vaqt o'tib urinib ko'ring.",
+    "kicked_by_server": "❌ Server sizni chiqarib tashladi. Muhtarij sababini ko'ring.",
+    "kicked_outdated_client": "❌ Client versiyasi eski. Versiyani o'zgartirib ko'ring.",
+    "kicked_outdated_server": "❌ Server eski versiyasida. Server versiyasini yangilang.",
+    "authentication_failed": "❌ Autentifikatsiya muvaffaqiyatsiz. Microsoft hisobga kirish kerak bo'lishi mumkin.",
+    "msa_login_required": "❌ Microsoft hisob tasdiqlanishi kerak. MSA kodi bilan kirish uchun doimiy operatorga murojaat qiling.",
+    "access_denied": "❌ Kirish ruxsati berilmagan. Server administratoriga murojaat qiling.",
+    "whitelist_denied": "❌ Siz server whitelist'ida emasiz!",
+    "banned": "❌ Siz bu serverdan bloklangansiz!",
+    "too_many_login_attempts": "❌ Juda ko'p urinish. 5 daqiqadan so'ng urinib ko'ring.",
+    "session_invalid": "❌ Sessiyangiz yaroqsiz. Qayta kirish uchun urinib ko'ring.",
+    "protocol_error": "❌ Protokol xatosi. Server bilan aloqa o'rnatib bo'lmadi.",
+    "compression_error": "❌ Siqish xatosi. Ma'lumotlar o'tkazmada muammo.",
+    "encryption_error": "❌ Shifrlash xatosi. Xavfsizlik sertifikati muammo.",
+    "io_error": "❌ Kirish/Chiqish xatosi. Ulanish buzildi.",
+    "server_crashed": "❌ Server quladi. Shu kunning keyinroq qayta urinib ko'ring.",
+    "no_response": "❌ Server javob bermadi. Ulanish vaqti tugadi.",
+    "dns_error": "❌ Server manzilini topib bo'lmadi. IP/domain'ni tekshiring.",
+    "firewall_blocked": "❌ Fayervol tomonidan bloklandi yoki proxi muammo bor.",
+    "invalid_json": "❌ Server noto'g'ri ma'lumot yubordi (JSON xatosi).",
+    "unsupported_format": "❌ Server ulashtirilmagan format yubordi.",
+    "server_unreachable": "❌ Server mavjud emas yoki to'liq offline!",
+    "connection_lost": "❌ Ulanish yo'qoldi. Internet ulanish uzilgan bo'lishi mumkin.",
+    "backend_error": "❌ Backend xatosi. Server administratoriga murojaat qiling.",
+    "capacity_exceeded": "❌ Server sig'imi oshib ketdi. Keyinroq urinib ko'ring.",
+    "unknown_error": "❌ Noma'lum xato yuz berdi. Batafsil:" 
+  };
+
+  function translateError(errorCode) {
+    return uzbekErrorMessages[errorCode] || (uzbekErrorMessages["unknown_error"] + " " + errorCode);
+  }
+
+  function showError(message) {
+    const errorDiv = document.createElement("div");
+    errorDiv.style.cssText = `
+      position: fixed; top: 20px; right: 20px; z-index: 9999;
+      background: var(--danger); color: white; padding: 16px 20px;
+      border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      font-size: 14px; max-width: 350px; word-wrap: break-word;
+      animation: slideIn 0.3s ease-out;
+    `;
+    errorDiv.innerHTML = message;
+    document.body.appendChild(errorDiv);
+    setTimeout(() => errorDiv.remove(), 6000);
+  }
 
   function loadBots() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
@@ -247,7 +349,11 @@
   async function handleStart() {
     const form = readForm();
     if (!form.host || !form.username) {
-      alert("Server IP va nickname kiritish shart!");
+      showError("Server IP va nickname kiritish shart!");
+      return;
+    }
+    if (!form.version) {
+      showError("Minecraft versiyasini majburiy tanlang!");
       return;
     }
 
@@ -260,9 +366,13 @@
     saveBots(list);
 
     try {
-      await callStart(entry);
+      const result = await callStart(entry);
+      if (result.error) {
+        showError(translateError(result.error));
+        return;
+      }
     } catch (e) {
-      alert("Backend'ga ulanib bo'lmadi. API_BASE manzilini tekshiring.");
+      showError("Backend'ga ulanib bo'lmadi. Zotiy: " + e.message);
     }
 
     cancelEdit();
