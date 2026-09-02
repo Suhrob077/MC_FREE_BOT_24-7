@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Minecraft AFK Bot</title>
+<style>
+  :root {
+    --bg: #1b1f1a;
+    --panel: #24291f;
+    --accent: #7ec850;
+    --accent-dark: #5a9c34;
+    --text: #eef1e8;
+    --muted: #9aa590;
+    --danger: #d9534f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  .card {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 28px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+  p.subtitle {
+    text-align: center;
+    color: var(--muted);
+    margin: 0 0 24px;
+    font-size: 13px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    margin: 14px 0 6px;
+    color: var(--muted);
+  }
+  input[type=text], input[type=number] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #3a4130;
+    background: #171b13;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .toggle-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .toggle-group button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #3a4130;
+    background: #171b13;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toggle-group button.active {
+    background: var(--accent-dark);
+    color: #fff;
+    border-color: var(--accent-dark);
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  button.primary, button.stop {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #10230a; }
+  button.primary:hover { background: var(--accent-dark); color: #fff; }
+  button.stop { background: var(--danger); color: #fff; }
+  button.stop:hover { background: #b8433f; }
+  .status-box {
+    margin-top: 22px;
+    padding: 14px;
+    border-radius: 8px;
+    background: #171b13;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .dot.online { background: var(--accent); }
+  .dot.offline { background: #666; }
+  .dot.error { background: var(--danger); }
+  .dot.connecting, .dot.reconnecting { background: #e0b93a; }
+  .msa-box {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #2a2412;
+    border: 1px solid #6b5a1c;
+    font-size: 13px;
+  }
+  a { color: var(--accent); }
+  .footnote {
+    margin-top: 18px;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>⛏️ Minecraft AFK Bot</h1>
+  <p class="subtitle">Serveringizga bot yuboring, u doim online turadi</p>
+
+  <label>Server IP / manzil</label>
+  <input type="text" id="host" placeholder="masalan: play.example.net" />
+
+  <label>Port (ixtiyoriy, default 25565)</label>
+  <input type="number" id="port" placeholder="25565" />
+
+  <label>Bot nickname</label>
+  <input type="text" id="username" placeholder="AFKBot123" />
+
+  <label>Server turi</label>
+  <div class="toggle-group">
+    <button type="button" id="btnCracked" class="active" onclick="setAuth('cracked')">Cracked</button>
+    <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
+  </div>
+
+  <label>Qancha vaqt ulanib tursin? (daqiqa, bo'sh = cheksiz)</label>
+  <input type="number" id="duration" placeholder="masalan: 120" />
+
+  <div class="actions">
+    <button class="primary" onclick="startBot()">▶ Start</button>
+    <button class="stop" onclick="stopBot()">■ Stop</button>
+  </div>
+
+  <div class="status-box" id="statusBox">
+    <span class="dot offline"></span> Holat: yuklanmoqda...
+  </div>
+
+  <div class="footnote">
+    Backend manzilini <code>API_BASE</code> o'zgaruvchisida sozlang (script pastida)
+  </div>
+</div>
+
+<script>
+  // ⚠️ IMPORTANT: change this to your own backend URL (Northflank public URL)
+  const API_BASE = "https://YOUR-NORTHFLANK-URL.code.run";
+
+  // Unique ID per browser tab/session, so each user controls only their own bot
+  const sessionId = crypto.randomUUID();
+
+  let authMode = "cracked";
+
+  function setAuth(mode) {
+    authMode = mode;
+    document.getElementById("btnCracked").classList.toggle("active", mode === "cracked");
+    document.getElementById("btnPremium").classList.toggle("active", mode === "premium");
+  }
+
+  async function startBot() {
+    const host = document.getElementById("host").value.trim();
+    const port = document.getElementById("port").value.trim();
+    const username = document.getElementById("username").value.trim();
+    const duration = document.getElementById("duration").value.trim();
+
+    if (!host || !username) {
+      alert("Server IP va nickname kiritish shart!");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/bot/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          host,
+          port: port ? Number(port) : undefined,
+          username,
+          authMode,
+          durationMinutes: duration ? Number(duration) : undefined,
+        }),
+      });
+      const data = await res.json();
+      console.log(data);
+    } catch (e) {
+      alert("Backend'ga ulanib bo'lmadi. API_BASE manzilini tekshiring.");
+    }
+  }
+
+  async function stopBot() {
+    try {
+      await fetch(`${API_BASE}/api/bot/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+    } catch (e) {
+      alert("Backend'ga ulanib bo'lmadi.");
+    }
+  }
+
+  function renderStatus(s) {
+    const box = document.getElementById("statusBox");
+    const dotClass = s.status || "offline";
+    let html = `<span class="dot ${dotClass}"></span> Holat: <b>${s.status}</b><br>`;
+    if (s.host) html += `Server: ${s.host}:${s.port}<br>`;
+    if (s.username) html += `Bot: ${s.username} (${s.authMode})<br>`;
+    if (s.durationMinutes) html += `Davomiylik: ${s.durationMinutes} daqiqa<br>`;
+    if (s.lastError) html += `Xato: ${s.lastError}<br>`;
+    box.innerHTML = html;
+
+    // Show Microsoft device login prompt if needed
+    let msaBox = document.getElementById("msaBox");
+    if (s.msaLogin) {
+      if (!msaBox) {
+        msaBox = document.createElement("div");
+        msaBox.id = "msaBox";
+        msaBox.className = "msa-box";
+        box.after(msaBox);
+      }
+      msaBox.innerHTML = `Microsoft hisobga kirish kerak:<br>
+        <a href="${s.msaLogin.url}" target="_blank">${s.msaLogin.url}</a><br>
+        Kod: <b>${s.msaLogin.code}</b>`;
+    } else if (msaBox) {
+      msaBox.remove();
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/bot/status?sessionId=${sessionId}`);
+      const data = await res.json();
+      renderStatus(data);
+    } catch (e) {
+      renderStatus({ status: "offline (backend topilmadi)" });
+    }
+  }
+
+  pollStatus();
+  setInterval(pollStatus, 5000);
+</script>
+
+</body>
+</html>
