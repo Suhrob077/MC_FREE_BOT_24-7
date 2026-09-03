@@ -33,6 +33,8 @@ const WATCHDOG_CHECK_MS = 15 * 1000;      // how often we check for a frozen con
 const WATCHDOG_TIMEOUT_MS = 45 * 1000;    // no packets for this long => force reconnect
 const FAST_RETRY_MS = 10 * 1000;          // normal disconnect / kick
 const SLOW_RETRY_MS = 5 * 60 * 1000;      // looks like server is offline
+const CONNECT_TIMEOUT_MS = 20 * 1000;     // if we never reach spawn/error/end within this window
+                                           // (silently blocked connection), force a retry
 
 // Every real Minecraft Java Edition release from 1.12.2 to the current
 // latest (26.2), in chronological order. Mojang switched from 1.x numbering
@@ -165,6 +167,7 @@ function freshState() {
     humanActionInterval: null,
     watchdogInterval: null,
     reconnectTimer: null,
+    connectTimeoutTimer: null,
     lastPacketAt: null,
     stopping: false, // true once the user explicitly stops the bot
   };
@@ -175,10 +178,12 @@ function clearAllTimers(state) {
   if (state.humanActionInterval) clearInterval(state.humanActionInterval);
   if (state.watchdogInterval) clearInterval(state.watchdogInterval);
   if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+  if (state.connectTimeoutTimer) clearTimeout(state.connectTimeoutTimer);
   state.stopTimer = null;
   state.humanActionInterval = null;
   state.watchdogInterval = null;
   state.reconnectTimer = null;
+  state.connectTimeoutTimer = null;
 }
 
 function stopBot(sessionId) {
@@ -315,9 +320,39 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
     return null;
   }
 
+  // Connect-phase timeout: if we never reach 'spawn' (or an error/end that
+  // already schedules a retry) within CONNECT_TIMEOUT_MS, the connection is
+  // most likely being silently dropped (no TCP RST, no protocol error) —
+  // e.g. by an upstream proxy/firewall. Force it closed and retry instead of
+  // leaving the UI stuck on "Ulanmoqda..." forever.
+  {
+    const s0 = sessions.get(sessionId);
+    if (s0) {
+      if (s0.state.connectTimeoutTimer) clearTimeout(s0.state.connectTimeoutTimer);
+      s0.state.connectTimeoutTimer = setTimeout(() => {
+        const cur = sessions.get(sessionId);
+        if (!cur || cur.state.stopping) return;
+        if (cur.state.status === "connecting") {
+          console.log(`⌛ [${sessionId}] Connect timeout after ${CONNECT_TIMEOUT_MS / 1000}s (no response from server), retrying`);
+          cur.state.lastError = uzbekError("no_response");
+          try {
+            newBot.end("connect_timeout");
+          } catch (e) {
+            // end() itself may throw if the socket never opened; force retry directly
+            scheduleReconnect(sessionId, FAST_RETRY_MS);
+          }
+        }
+      }, CONNECT_TIMEOUT_MS);
+    }
+  }
+
   newBot.once("spawn", () => {
     const s = sessions.get(sessionId);
     if (!s) return;
+    if (s.state.connectTimeoutTimer) {
+      clearTimeout(s.state.connectTimeoutTimer);
+      s.state.connectTimeoutTimer = null;
+    }
     s.state.status = "online";
     s.state.msaLogin = null;
     s.state.lastError = null;
