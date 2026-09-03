@@ -412,6 +412,23 @@ function spawnBot({ host, port, username, authMode, version, effectiveVersion },
   let newBot;
   try {
     newBot = mineflayer.createBot(options);
+
+    // Many servers (this one included) force a resource pack on join.
+    // mineflayer only *exposes* bot.acceptResourcePack()/denyResourcePack()
+    // — it never calls either automatically. If nothing responds, the
+    // server waits for an answer and eventually kicks the player for not
+    // answering (this is why the bot was joining, getting a UUID, then
+    // getting disconnected ~60s later without ever fully spawning). We
+    // don't actually need the texture files, just to tell the server
+    // "yes, accepted" so it lets the login continue.
+    newBot.on("resourcePack", () => {
+      try {
+        console.log(`🎨 [${sessionId}] Server requested a resource pack — auto-accepting`);
+        newBot.acceptResourcePack();
+      } catch (e) {
+        /* ignore */
+      }
+    });
   } catch (err) {
     const s = sessions.get(sessionId);
     if (s) {
