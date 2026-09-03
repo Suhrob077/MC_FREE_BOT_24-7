@@ -49,6 +49,7 @@
   .card h2 { font-size: 15px; margin: 0 0 16px; color: var(--accent); }
 
   label { display: block; font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
+  label.required { color: var(--danger); font-weight: 600; }
   input[type=text], input[type=number], select {
     width: 100%;
     padding: 10px 12px;
@@ -58,6 +59,12 @@
     color: var(--text);
     font-size: 14px;
   }
+  select#version { border-color: #5a3030; }
+
+  .nick-row { display: flex; gap: 8px; }
+  .nick-row input { flex: 1; }
+  .nick-row button.ghost { flex: 0 0 auto; width: 44px; padding: 10px 0; font-size: 16px; }
+
   .toggle-group { display: flex; gap: 8px; margin-top: 6px; }
   .toggle-group button {
     flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #3a4130;
@@ -90,6 +97,7 @@
   .bot-item-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .bot-item-title { font-weight: 600; font-size: 14px; }
   .bot-item-info { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+  .bot-item-info .err { color: var(--danger); }
   .bot-item-btns { display: flex; gap: 6px; margin-top: 10px; }
   .bot-item-btns button {
     padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #3a4130;
@@ -112,13 +120,41 @@
   }
   a { color: var(--accent); }
 
+  /* Toast notifications */
+  #toastContainer {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 320px;
+  }
+  .toast {
+    background: #3a1f1c;
+    border: 1px solid var(--danger);
+    color: #ffe4e2;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    animation: slideIn 0.25s ease-out;
+  }
+  .toast.info {
+    background: #23301c;
+    border-color: var(--accent-dark);
+    color: #eaffe0;
+  }
   @keyframes slideIn {
-    from { transform: translateX(400px); opacity: 0; }
+    from { transform: translateX(40px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
   }
 </style>
 </head>
 <body>
+
+<div id="toastContainer"></div>
 
 <h1>⛏️ Minecraft AFK Bot</h1>
 <p class="subtitle">Serveringizga bot yuboring, u doim online turadi</p>
@@ -136,10 +172,10 @@
     <label>Port (ixtiyoriy, default 25565)</label>
     <input type="number" id="port" placeholder="25565" />
 
-    <label>Bot nickname (yoki " 🎲 Tasodifiy" bosing)</label>
-    <div style="display: flex; gap: 8px;">
+    <label>Bot nickname</label>
+    <div class="nick-row">
       <input type="text" id="username" placeholder="AFKBot123" />
-      <button type="button" class="ghost" onclick="generateRandomNick()" style="flex: 0 0 auto; padding: 10px 14px;">🎲</button>
+      <button type="button" class="ghost" title="Tasodifiy nik" onclick="generateRandomNick()">🎲</button>
     </div>
 
     <label>Server turi</label>
@@ -148,36 +184,10 @@
       <button type="button" id="btnPremium" onclick="setAuth('premium')">Premium (litsenziyali)</button>
     </div>
 
-    <label>Minecraft Versiyasi (ixtiyoriy - automatik aniqlash)</label>
+    <label class="required">Minecraft versiyasi * (majburiy)</label>
     <select id="version">
-      <option value="">Avtomatik aniqlash ← Tavsiya etiladi</option>
-      <option value="1.12.2">1.12.2</option>
-      <option value="1.13.2">1.13.2</option>
-      <option value="1.14.4">1.14.4</option>
-      <option value="1.15.2">1.15.2</option>
-      <option value="1.16.5">1.16.5</option>
-      <option value="1.17.1">1.17.1</option>
-      <option value="1.18.2">1.18.2</option>
-      <option value="1.19.2">1.19.2</option>
-      <option value="1.19.4">1.19.4</option>
-      <option value="1.20.1">1.20.1</option>
-      <option value="1.20.4">1.20.4</option>
-      <option value="1.20.6">1.20.6</option>
-      <option value="1.21">1.21</option>
-      <option value="1.21.1">1.21.1</option>
-      <option value="1.21.4">1.21.4</option>
-      <option value="1.21.11">1.21.11</option>
-      <option value="1.22">1.22</option>
-      <option value="1.22.1">1.22.1</option>
-      <option value="1.23">1.23</option>
-      <option value="1.23.1">1.23.1</option>
-      <option value="1.24">1.24</option>
-      <option value="1.24.1">1.24.1</option>
-      <option value="1.25">1.25</option>
-      <option value="1.25.1">1.25.1</option>
-      <option value="1.26">1.26</option>
-      <option value="1.26.1">1.26.1</option>
-      <option value="1.26.2">1.26.2</option>
+      <option value="">— Versiyani tanlang —</option>
+      <!-- To'ldiriladi: JS orqali backend /api/versions'dan (pastga qarang) -->
     </select>
 
     <label>Qancha vaqt ulanib tursin? (daqiqa, bo'sh = cheksiz)</label>
@@ -210,80 +220,130 @@
   let authMode = "cracked";
   let editingId = null; // sessionId currently being edited, or null = new bot
 
-  // 🎮 GAMING-STYLE RANDOM NICKNAMES
-  const randomNicknames = [
-    "DragonSlayer", "CreeperKing", "EnderMaster", "NetherKing", "SkyWalker",
-    "PixelPro", "BlockHunter", "MineGod", "CaveExplorer", "SteveMaster",
-    "DirtDigger", "IronFinder", "GoldRusher", "LavaWalker", "FrostByte",
-    "ShadowNinja", "PhantomRider", "SkeletonSlayer", "ZombieKiller", "SpiderHunter",
-    "PumpkinKing", "WitchHunter", "HuskarBrave", "RiddleStone", "FoxFriend",
-    "ArmadilloRider", "BeeKeeper", "VillagerDealer", "FarmMaster", "BuilderPro",
-    "RedstoneGod", "CommandMaster", "ModBuilder", "MapArtist", "ParkourKing",
-    "PvPLord", "SurvivalPro", "AdventureSeeker", "TreasureHunter", "TempleRaider",
-    "BattleCry", "NoobSlayer", "PROgamer", "LagFighter", "CubeMaster"
-  ];
-
-  function generateRandomNick() {
-    const nick = randomNicknames[Math.floor(Math.random() * randomNicknames.length)] + 
-                 Math.floor(Math.random() * 1000);
-    document.getElementById("username").value = nick;
-  }
-
-  // 🚨 UZBEK ERROR MESSAGES (30+ xatolar)
-  const uzbekErrorMessages = {
-    "invalid_host": "❌ Server IP/manzili noto'g'ri yoki bo'sh!",
-    "invalid_port": "❌ Port raqami noto'g'ri (1-65535 oralig'ida bo'lishi kerak)",
-    "invalid_username": "❌ Foydalanuvchi nomi 3-16 belgidan iborat bo'lishi kerak",
-    "version_required": "❌ Minecraft versiyasini tanlab olish majburiy!",
-    "version_not_supported": "❌ Bu versiya taqdim qilinmagan yoki qo'llanmaydi",
-    "connection_refused": "❌ Server ulanishni rad etdi. Server online ekanligini tekshiring.",
-    "timeout": "❌ Ulanish vaqti tugadi. Server juda uzoq yoki offline!",
-    "network_error": "❌ Tarmoq xatosi. Internet ulanishingizni tekshiring.",
-    "invalid_credentials": "❌ Foydalanuvchi nomi yoki parol noto'g'ri (Premium)!",
-    "server_full": "❌ Server to'lgan. Ba'zi vaqt o'tib urinib ko'ring.",
-    "kicked_by_server": "❌ Server sizni chiqarib tashladi. Muhtarij sababini ko'ring.",
-    "kicked_outdated_client": "❌ Client versiyasi eski. Versiyani o'zgartirib ko'ring.",
-    "kicked_outdated_server": "❌ Server eski versiyasida. Server versiyasini yangilang.",
-    "authentication_failed": "❌ Autentifikatsiya muvaffaqiyatsiz. Microsoft hisobga kirish kerak bo'lishi mumkin.",
-    "msa_login_required": "❌ Microsoft hisob tasdiqlanishi kerak. MSA kodi bilan kirish uchun doimiy operatorga murojaat qiling.",
-    "access_denied": "❌ Kirish ruxsati berilmagan. Server administratoriga murojaat qiling.",
-    "whitelist_denied": "❌ Siz server whitelist'ida emasiz!",
-    "banned": "❌ Siz bu serverdan bloklangansiz!",
-    "too_many_login_attempts": "❌ Juda ko'p urinish. 5 daqiqadan so'ng urinib ko'ring.",
-    "session_invalid": "❌ Sessiyangiz yaroqsiz. Qayta kirish uchun urinib ko'ring.",
-    "protocol_error": "❌ Protokol xatosi. Server bilan aloqa o'rnatib bo'lmadi.",
-    "compression_error": "❌ Siqish xatosi. Ma'lumotlar o'tkazmada muammo.",
-    "encryption_error": "❌ Shifrlash xatosi. Xavfsizlik sertifikati muammo.",
-    "io_error": "❌ Kirish/Chiqish xatosi. Ulanish buzildi.",
-    "server_crashed": "❌ Server quladi. Shu kunning keyinroq qayta urinib ko'ring.",
-    "no_response": "❌ Server javob bermadi. Ulanish vaqti tugadi.",
-    "dns_error": "❌ Server manzilini topib bo'lmadi. IP/domain'ni tekshiring.",
-    "firewall_blocked": "❌ Fayervol tomonidan bloklandi yoki proxi muammo bor.",
-    "invalid_json": "❌ Server noto'g'ri ma'lumot yubordi (JSON xatosi).",
-    "unsupported_format": "❌ Server ulashtirilmagan format yubordi.",
-    "server_unreachable": "❌ Server mavjud emas yoki to'liq offline!",
-    "connection_lost": "❌ Ulanish yo'qoldi. Internet ulanish uzilgan bo'lishi mumkin.",
-    "backend_error": "❌ Backend xatosi. Server administratoriga murojaat qiling.",
-    "capacity_exceeded": "❌ Server sig'imi oshib ketdi. Keyinroq urinib ko'ring.",
-    "unknown_error": "❌ Noma'lum xato yuz berdi. Batafsil:" 
+  // ---------------------------------------------------------------
+  // 34 ta o'zbekcha xato xabari — backenddan kelgan `code` shu ro'yxatga
+  // mos keladi. Backend har doim { code, message, raw } shaklida
+  // lastError yuboradi, shuning uchun bu jadval asosan frontend-only
+  // (masalan tarmoq darajasidagi xatolar) holatlar uchun zaxira sifatida.
+  // ---------------------------------------------------------------
+  const UZBEK_ERRORS = {
+    host_required: "Server IP/manzili noto'g'ri yoki bo'sh!",
+    invalid_port: "Port raqami noto'g'ri (1-65535 oralig'ida bo'lishi kerak)",
+    invalid_username: "Foydalanuvchi nomi 3-16 belgidan iborat bo'lishi kerak",
+    version_required: "Minecraft versiyasini tanlab olish majburiy!",
+    unsupported_version: "Bu versiya taqdim qilinmagan yoki qo'llanmaydi",
+    connection_refused: "Server ulanishni rad etdi",
+    timeout: "Ulanish vaqti tugadi",
+    network_error: "Tarmoq xatosi",
+    auth_failed: "Foydalanuvchi nomi yoki parol noto'g'ri (Premium)",
+    server_full: "Server to'lgan",
+    kicked: "Server sizni chiqarib tashladi",
+    client_outdated: "Client versiyasi eski",
+    server_outdated: "Server eski versiyasida",
+    authentication_failed: "Autentifikatsiya muvaffaqiyatsiz",
+    msa_required: "Microsoft hisob tasdiqlanishi kerak",
+    access_denied: "Kirish ruxsati berilmagan",
+    not_whitelisted: "Siz server whitelist'ida emassiz",
+    banned: "Siz bu serverdan bloklangansiz",
+    too_many_requests: "Juda ko'p urinish",
+    invalid_session: "Sessiyangiz yaroqsiz",
+    protocol_error: "Protokol xatosi",
+    compression_error: "Siqish xatosi",
+    encryption_error: "Shifrlash xatosi",
+    io_error: "Kirish/Chiqish xatosi",
+    server_crashed: "Server quladi",
+    no_response: "Server javob bermadi",
+    dns_error: "Server manzilini topib bo'lmadi",
+    firewall_blocked: "Fayervol tomonidan bloklandi",
+    malformed_data: "Server noto'g'ri ma'lumot yubordi",
+    server_not_exist: "Server mavjud emas",
+    connection_lost: "Ulanish yo'qoldi",
+    backend_error: "Backend xatosi",
+    capacity_exceeded: "Server sig'imi oshib ketdi",
+    unknown_error: "Noma'lum xatolik yuz berdi",
   };
 
-  function translateError(errorCode) {
-    return uzbekErrorMessages[errorCode] || (uzbekErrorMessages["unknown_error"] + " " + errorCode);
+  function translateError(errObj) {
+    if (!errObj) return null;
+    if (typeof errObj === "string") return errObj;
+    if (errObj.message) return errObj.message;
+    if (errObj.code && UZBEK_ERRORS[errObj.code]) return UZBEK_ERRORS[errObj.code];
+    return UZBEK_ERRORS.unknown_error;
   }
 
-  function showError(message) {
-    const errorDiv = document.createElement("div");
-    errorDiv.style.cssText = `
-      position: fixed; top: 20px; right: 20px; z-index: 9999;
-      background: var(--danger); color: white; padding: 16px 20px;
-      border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-      font-size: 14px; max-width: 350px; word-wrap: break-word;
-      animation: slideIn 0.3s ease-out;
-    `;
-    errorDiv.innerHTML = message;
-    document.body.appendChild(errorDiv);
-    setTimeout(() => errorDiv.remove(), 6000);
+  // ---- Toast notifications ----
+  function showError(text) {
+    showToast(text, "error");
+  }
+  function showToast(text, kind) {
+    const container = document.getElementById("toastContainer");
+    const el = document.createElement("div");
+    el.className = "toast" + (kind === "info" ? " info" : "");
+    el.textContent = (kind === "info" ? "" : "❌ ") + text;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  }
+
+  // ---- 45 ta tasodifiy gaming nik ----
+  const RANDOM_NICKS = [
+    // Dragons & Magic
+    "DragonSlayer", "CreeperKing", "EnderMaster", "NetherKing", "SkyWalker",
+    "PixelPro", "BlockHunter", "MineGod", "SteveMaster",
+    // Mining
+    "DirtDigger", "IronFinder", "GoldRusher", "LavaWalker", "FrostByte",
+    // Combat
+    "ShadowNinja", "PhantomRider", "SkeletonSlayer", "ZombieKiller", "SpiderHunter",
+    "PumpkinKing", "WitchHunter", "BattleCry", "PvPLord",
+    // Magic & Redstone
+    "RedstoneGod", "CommandMaster", "ModBuilder",
+    // Builders
+    "BuilderPro", "MapArtist", "HuskarBrave", "RiddleStone",
+    // Explorers
+    "CaveExplorer", "CubeMaster", "AdventureSeeker", "TreasureHunter", "TempleRaider",
+    // Animals & Nature
+    "FoxFriend", "ArmadilloRider", "BeeKeeper", "VillagerDealer", "FarmMaster",
+    // PvP & Gaming
+    "ParkourKing", "SurvivalPro", "NoobSlayer", "LagFighter",
+  ];
+  function generateRandomNick() {
+    const base = RANDOM_NICKS[Math.floor(Math.random() * RANDOM_NICKS.length)];
+    const num = Math.floor(Math.random() * 1000); // 0-999
+    document.getElementById("username").value = base + num;
+  }
+
+  // ---- Minecraft versions: every real 1.12.2 -> 26.2 release. ----
+  // Loaded from the backend (/api/versions) so the dropdown always matches
+  // what the server actually validates against. Falls back to this local
+  // copy if the backend is unreachable when the page loads.
+  const FALLBACK_VERSIONS = [
+    "1.12.2", "1.13", "1.13.1", "1.13.2",
+    "1.14", "1.14.1", "1.14.2", "1.14.3", "1.14.4",
+    "1.15", "1.15.1", "1.15.2",
+    "1.16", "1.16.1", "1.16.2", "1.16.3", "1.16.4", "1.16.5",
+    "1.17", "1.17.1",
+    "1.18", "1.18.1", "1.18.2",
+    "1.19", "1.19.1", "1.19.2", "1.19.3", "1.19.4",
+    "1.20", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5", "1.20.6",
+    "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11",
+    "26.1", "26.1.1", "26.1.2", "26.2",
+  ];
+
+  function populateVersionSelect(versions) {
+    const select = document.getElementById("version");
+    const current = select.value;
+    select.innerHTML = '<option value="">— Versiyani tanlang —</option>' +
+      versions.map(v => `<option value="${v}">${v}</option>`).join("");
+    if (current && versions.includes(current)) select.value = current;
+  }
+
+  async function loadVersions() {
+    try {
+      const res = await fetch(`${API_BASE}/api/versions`);
+      const data = await res.json();
+      populateVersionSelect(data.versions && data.versions.length ? data.versions : FALLBACK_VERSIONS);
+    } catch (e) {
+      populateVersionSelect(FALLBACK_VERSIONS);
+    }
   }
 
   function loadBots() {
@@ -329,6 +389,20 @@
     setAuth("cracked");
   }
 
+  // ---- Frontend-side validation (mirrors backend rules) ----
+  function validateForm(form) {
+    if (!form.host) return UZBEK_ERRORS.host_required;
+    if (form.port) {
+      const p = Number(form.port);
+      if (!Number.isInteger(p) || p < 1 || p > 65535) return UZBEK_ERRORS.invalid_port;
+    }
+    if (!form.username || form.username.length < 3 || form.username.length > 16) {
+      return UZBEK_ERRORS.invalid_username;
+    }
+    if (!form.version) return UZBEK_ERRORS.version_required;
+    return null;
+  }
+
   async function callStart(entry) {
     const res = await fetch(`${API_BASE}/api/bot/start`, {
       method: "POST",
@@ -343,16 +417,22 @@
         durationMinutes: entry.duration ? Number(entry.duration) : undefined,
       }),
     });
-    return res.json();
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(translateError(data.error) || "Backend xatosi");
+      err.payload = data;
+      throw err;
+    }
+    return data;
   }
 
   async function handleStart() {
     const form = readForm();
-    if (!form.host || !form.username) {
-      showError("Server IP va nickname kiritish shart!");
+    const validationError = validateForm(form);
+    if (validationError) {
+      showError(validationError);
       return;
     }
-    // Version endi ixtiyoriy - avtomatik aniqlash ishlatiladi
 
     const id = editingId || crypto.randomUUID();
     const entry = { id, ...form };
@@ -363,13 +443,10 @@
     saveBots(list);
 
     try {
-      const result = await callStart(entry);
-      if (result.error) {
-        showError(translateError(result.error));
-        return;
-      }
+      await callStart(entry);
+      showToast(`Bot ishga tushirildi: ${entry.username}`, "info");
     } catch (e) {
-      showError("Backend'ga ulanib bo'lmadi. Zotiy: " + e.message);
+      showError(e.message || "Backend'ga ulanib bo'lmadi. API_BASE manzilini tekshiring.");
     }
 
     cancelEdit();
@@ -394,7 +471,7 @@
     try {
       await callStart(entry);
     } catch (e) {
-      alert("Backend'ga ulanib bo'lmadi.");
+      showError(e.message || "Backend'ga ulanib bo'lmadi.");
     }
     renderList();
   }
@@ -464,6 +541,7 @@
           <a href="${s.msaLogin.url}" target="_blank">${s.msaLogin.url}</a><br>
           Kod: <b>${s.msaLogin.code}</b></div>`;
       }
+      const errText = translateError(s.lastError);
       return `
         <div class="bot-item">
           <div class="bot-item-head">
@@ -472,10 +550,8 @@
           </div>
           <div class="bot-item-info">
             Server: ${entry.host}${entry.port ? ":" + entry.port : ""}<br>
-            Turi: ${entry.authMode === "premium" ? "Premium" : "Cracked"}${entry.version ? " · v" + entry.version : " · avto-versiya"}
-            ${s.detectedVersion ? `<br>🔍 Haqiqiy versiya: <b>${s.detectedVersion}</b>` : ""}
-            ${s.versionWarning ? `<br>${s.versionWarning}` : ""}
-            ${s.lastError ? `<br>${s.lastError}` : ""}
+            Turi: ${entry.authMode === "premium" ? "Premium" : "Cracked"}${entry.version ? " · v" + entry.version : ""}
+            ${errText ? `<br><span class="err">Xato: ${errText}</span>` : ""}
           </div>
           ${msa}
           <div class="bot-item-btns">
@@ -498,6 +574,7 @@
     }
   }
 
+  loadVersions();
   renderList();
   refreshCapacity();
   setInterval(renderList, 5000);
