@@ -1,20 +1,40 @@
 /**
  * server.js
- * Minecraft AFK Bot — Backend (MULTI-USER VERSION, v2.0.0)
+ * Minecraft AFK Bot — Backend (MULTI-USER VERSION, v2.1.0)
  * ---------------------------------------------------------
  * Express API that starts/stops mineflayer bots on demand.
  * Supports MULTIPLE concurrent bot sessions — each browser/user gets
  * their own isolated bot(s), tracked by a sessionId sent from the frontend.
  *
- * v2.0.0 feature set:
+ * v2.1.0 — Aternos reliability fixes ported from Slobos-AFK-Aternos-Bot:
+ *  - Much longer connect-phase timeout (Aternos can take 90-120s to
+ *    finish spawning a player after the server wakes up)
+ *  - Explicit mineflayer `checkTimeoutInterval` so mineflayer's own
+ *    internal keep-alive watchdog doesn't kill a connection that's
+ *    just being slow (this alone was the biggest cause of the
+ *    endless "connect timeout... retrying" loop)
+ *  - Aternos "Connection Throttled" kicks are now detected and get a
+ *    long, deliberately slow backoff (60-120s) instead of being
+ *    retried in 10s — retrying fast just makes Aternos throttle harder
+ *  - A SINGLE reconnect trigger per bot ('end' only, never both
+ *    'error' and 'end') — the old code could schedule two competing
+ *    reconnect timers per drop, which is what caused the rapid
+ *    reconnect spam visible in the logs
+ *  - Real exponential backoff with jitter, capped, instead of two
+ *    fixed delays
+ *  - Process-level crash recovery: uncaughtException / unhandledRejection
+ *    handlers so a raw socket write error (ECONNRESET/EPIPE/etc. thrown
+ *    from inside mineflayer/node-minecraft-protocol internals, which
+ *    bypasses our own try/catch blocks) can no longer take the whole
+ *    backend down and kill every user's bot at once
+ *  - Automatic fallback to version:false (protocol auto-detect) if the
+ *    user-selected version repeatedly fails with a protocol/version
+ *    error
  *  - Full input validation (host, port 1-65535, username 3-16 chars,
  *    version required)
  *  - Uzbek error code mapping (34 error codes) surfaced via publicState()
- *  - Anti-disconnect hardening:
- *      - human-like periodic actions (look / jump / sneak / short walk)
- *      - connection watchdog (force-reconnect on a silent/frozen socket)
- *      - smart reconnect backoff (fast retry on normal drop, slow retry
- *        when the server looks fully offline, so we don't hammer it)
+ *  - Anti-disconnect hardening: human-like periodic actions, connection
+ *    watchdog (force-reconnect on a silent/frozen socket)
  *  - Detailed emoji logging
  */
 
@@ -29,12 +49,41 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const MAX_CONCURRENT_BOTS = 20; // simple safety cap, raise/lower as needed
 
-const WATCHDOG_CHECK_MS = 15 * 1000;      // how often we check for a frozen connection
-const WATCHDOG_TIMEOUT_MS = 45 * 1000;    // no packets for this long => force reconnect
-const FAST_RETRY_MS = 10 * 1000;          // normal disconnect / kick
-const SLOW_RETRY_MS = 5 * 60 * 1000;      // looks like server is offline
-const CONNECT_TIMEOUT_MS = 20 * 1000;     // if we never reach spawn/error/end within this window
-                                           // (silently blocked connection), force a retry
+const WATCHDOG_CHECK_MS = 15 * 1000;        // how often we check for a frozen connection
+const WATCHDOG_TIMEOUT_MS = 45 * 1000;      // no packets for this long => force reconnect
+
+// Aternos servers frequently take 90-120s to finish authenticating/spawning
+// a player once the underlying server has woken up. The old 20s timeout
+// forced a retry before the server had any real chance to respond, which
+// is the main reason the bot looked like it could never connect.
+const CONNECT_TIMEOUT_MS = 150 * 1000;      // if we never reach spawn/error/end within this window
+
+// mineflayer/node-minecraft-protocol has its OWN internal "did we hear
+// anything from the server recently" watchdog (default ~30s), separate
+// from CONNECT_TIMEOUT_MS above. On a slow-to-wake Aternos server this
+// can fire and tear the socket down before our own logic even gets a
+// chance to see what happened. Slobos-AFK works around this by setting
+// it very high and relying on its own watchdog/timeouts instead — we do
+// the same here.
+const MINEFLAYER_CHECK_TIMEOUT_INTERVAL_MS = 600 * 1000;
+
+// Reconnect backoff (exponential + jitter, single source of truth: only
+// the 'end' event schedules a reconnect — never 'error' or 'kicked'
+// directly, to avoid double-scheduling two competing timers).
+const RECONNECT_BASE_MS = 5 * 1000;         // first retry after a normal drop
+const RECONNECT_MAX_MS = 60 * 1000;         // cap for normal drops
+const OFFLINE_BASE_MS = 20 * 1000;          // first retry when the server looks fully offline
+const OFFLINE_MAX_MS = 5 * 60 * 1000;       // cap when the server looks fully offline
+
+// Aternos actively throttles rapid reconnects ("Connection Throttled!
+// Please wait before reconnecting."). Retrying fast just makes it worse,
+// so a throttle kick always gets this much longer, semi-randomized delay.
+const THROTTLE_MIN_DELAY_MS = 60 * 1000;
+const THROTTLE_JITTER_MS = 60 * 1000;
+
+const OFFLINE_ERROR_CODES = new Set([
+  "connection_refused", "dns_error", "timeout", "firewall_blocked", "no_response",
+]);
 
 // Every real Minecraft Java Edition release from 1.12.2 to the current
 // latest (26.2), in chronological order. Mojang switched from 1.x numbering
@@ -81,14 +130,14 @@ const UZBEK_ERRORS = {
   access_denied: "Kirish ruxsati berilmagan",
   not_whitelisted: "Siz server whitelist'ida emassiz",
   banned: "Siz bu serverdan bloklangansiz",
-  too_many_requests: "Juda ko'p urinish",
+  too_many_requests: "Juda ko'p urinish (server ulanishni cheklamoqda, biroz kutilmoqda)",
   invalid_session: "Sessiyangiz yaroqsiz",
   protocol_error: "Protokol xatosi",
   compression_error: "Siqish xatosi",
   encryption_error: "Shifrlash xatosi",
   io_error: "Kirish/Chiqish xatosi",
   server_crashed: "Server quladi",
-  no_response: "Server javob bermadi",
+  no_response: "Server javob bermadi (server uyg'onayotgan bo'lishi mumkin, kutilmoqda)",
   dns_error: "Server manzilini topib bo'lmadi",
   firewall_blocked: "Fayervol tomonidan bloklandi",
   malformed_data: "Server noto'g'ri ma'lumot yubordi",
@@ -131,6 +180,7 @@ function mapErrorToCode(err) {
   if (msg.includes("banned")) return "banned";
   if (msg.includes("full")) return "server_full";
   if (msg.includes("timed out") || msg.includes("timeout")) return "timeout";
+  if (msg.includes("throttl") || msg.includes("wait before reconnect") || msg.includes("too fast")) return "too_many_requests";
 
   return "unknown_error";
 }
@@ -138,12 +188,18 @@ function mapErrorToCode(err) {
 // Map a 'kicked' disconnect reason (string/object from the server) -> code.
 function mapKickToCode(reason) {
   const text = (typeof reason === "string" ? reason : JSON.stringify(reason || "")).toLowerCase();
+  if (text.includes("throttl") || text.includes("wait before reconnect") || text.includes("too fast")) return "too_many_requests";
   if (text.includes("whitelist")) return "not_whitelisted";
   if (text.includes("banned") || text.includes("ban")) return "banned";
   if (text.includes("full")) return "server_full";
   if (text.includes("outdated") && text.includes("server")) return "server_outdated";
   if (text.includes("outdated") && text.includes("client")) return "client_outdated";
   return "kicked";
+}
+
+function isThrottleText(reason) {
+  const text = (typeof reason === "string" ? reason : JSON.stringify(reason || "")).toLowerCase();
+  return text.includes("throttl") || text.includes("wait before reconnect") || text.includes("too fast");
 }
 
 // ---- Multiple sessions: sessionId -> { bot, state } ----
@@ -156,12 +212,13 @@ function freshState() {
     port: null,
     username: null,
     authMode: null,
-    version: null,
+    version: null,          // the version the user asked for (shown in UI)
+    effectiveVersion: null, // the version actually passed to mineflayer (may fall back to false)
     startedAt: null,
     durationMinutes: null,
     stopTimer: null,
     msaLogin: null,
-    lastError: null, // { code, message, raw }
+    lastError: null, // { code, message, raw } or null
 
     // internal bookkeeping (not exposed via publicState)
     humanActionInterval: null,
@@ -169,7 +226,11 @@ function freshState() {
     reconnectTimer: null,
     connectTimeoutTimer: null,
     lastPacketAt: null,
-    stopping: false, // true once the user explicitly stops the bot
+    stopping: false,          // true once the user explicitly stops the bot
+    reconnectScheduled: false, // guards against double-scheduling a reconnect
+    reconnectAttempts: 0,      // resets to 0 on a successful spawn
+    wasThrottled: false,       // set by a throttle kick, consumed by getReconnectDelay
+    versionFailStreak: 0,      // consecutive protocol/version errors, triggers auto-fallback
   };
 }
 
@@ -193,6 +254,7 @@ function stopBot(sessionId) {
   clearAllTimers(session.state);
   if (session.bot) {
     try {
+      session.bot.removeAllListeners();
       session.bot.quit();
     } catch (e) {
       /* ignore */
@@ -210,7 +272,7 @@ function startHumanActions(newBot, sessionId) {
 
   s.state.humanActionInterval = setInterval(() => {
     const cur = sessions.get(sessionId);
-    if (!cur || !cur.bot) return;
+    if (!cur || !cur.bot || cur.bot !== newBot) return;
     try {
       const action = Math.random();
       if (action < 0.4) {
@@ -252,7 +314,7 @@ function startWatchdog(newBot, sessionId) {
 
   s.state.watchdogInterval = setInterval(() => {
     const cur = sessions.get(sessionId);
-    if (!cur) return;
+    if (!cur || cur.bot !== newBot) return;
     const silentFor = Date.now() - (cur.state.lastPacketAt || Date.now());
     if (silentFor > WATCHDOG_TIMEOUT_MS) {
       console.log(`🧊 [${sessionId}] Watchdog: no packets for ${Math.round(silentFor / 1000)}s, forcing reconnect`);
@@ -265,16 +327,47 @@ function startWatchdog(newBot, sessionId) {
   }, WATCHDOG_CHECK_MS);
 }
 
-function scheduleReconnect(sessionId, delayMs) {
+// Exponential backoff + jitter. Aternos throttle kicks always win with a
+// long, semi-randomized delay — retrying fast after a throttle just makes
+// Aternos throttle harder, which was the actual cause of the endless
+// "no response from server, retrying" loop.
+function getReconnectDelay(state) {
+  if (state.wasThrottled) {
+    state.wasThrottled = false;
+    return THROTTLE_MIN_DELAY_MS + Math.floor(Math.random() * THROTTLE_JITTER_MS);
+  }
+
+  const looksOffline = state.lastError && OFFLINE_ERROR_CODES.has(state.lastError.code);
+  const base = looksOffline ? OFFLINE_BASE_MS : RECONNECT_BASE_MS;
+  const max = looksOffline ? OFFLINE_MAX_MS : RECONNECT_MAX_MS;
+  const attempts = Math.min(state.reconnectAttempts || 0, 8); // cap the exponent
+  const delay = Math.min(base * Math.pow(1.7, attempts), max);
+  const jitter = Math.floor(Math.random() * 2000);
+  return delay + jitter;
+}
+
+// Single source of truth for scheduling a reconnect. Only ever called from
+// the 'end' event (or a hard createBot() throw). Never called from both
+// 'error' and 'end' for the same drop — that double-scheduling is what
+// used to fire two competing reconnect timers per disconnect.
+function scheduleReconnect(sessionId) {
   const s = sessions.get(sessionId);
   if (!s || s.state.stopping) return;
+  if (s.state.reconnectScheduled) return; // already have one queued
   if (s.state.reconnectTimer) clearTimeout(s.state.reconnectTimer);
 
   s.state.status = "reconnecting";
+  s.state.reconnectScheduled = true;
+  s.state.reconnectAttempts = (s.state.reconnectAttempts || 0) + 1;
+
+  const delay = getReconnectDelay(s.state);
+  console.log(`♻️  [${sessionId}] Reconnecting in ${Math.round(delay / 1000)}s (attempt #${s.state.reconnectAttempts})`);
+
   s.state.reconnectTimer = setTimeout(() => {
     const cur = sessions.get(sessionId);
     if (!cur || cur.state.stopping) return;
-    console.log(`♻️  [${sessionId}] Reconnecting...`);
+    cur.state.reconnectScheduled = false;
+    cur.state.reconnectTimer = null;
     cur.state.status = "connecting";
     cur.bot = spawnBot(
       {
@@ -283,19 +376,30 @@ function scheduleReconnect(sessionId, delayMs) {
         username: cur.state.username,
         authMode: cur.state.authMode,
         version: cur.state.version,
+        effectiveVersion: cur.state.effectiveVersion,
       },
       sessionId
     );
-  }, delayMs);
+  }, delay);
 }
 
-function spawnBot({ host, port, username, authMode, version }, sessionId) {
+function spawnBot({ host, port, username, authMode, version, effectiveVersion }, sessionId) {
+  // If the user's chosen version has repeatedly failed with a protocol/
+  // version error, fall back to auto-detect (version: false) instead of
+  // continuing to hammer a version mineflayer can't speak to this server.
+  const versionToUse = effectiveVersion !== undefined ? effectiveVersion : version;
+
   const options = {
     host,
     port: port || 25565,
     username: username || "AFKBot",
-    version: version, // required by validation, always a real string here
+    version: versionToUse, // string, or false for auto-detect after fallback
     auth: authMode === "premium" ? "microsoft" : "offline",
+    hideErrors: false,
+    // Prevents mineflayer's own internal "haven't heard from the server in
+    // a while" watchdog from tearing the socket down while a slow-to-wake
+    // Aternos server is still starting up / authenticating.
+    checkTimeoutInterval: MINEFLAYER_CHECK_TIMEOUT_INTERVAL_MS,
   };
 
   if (authMode === "premium") {
@@ -315,23 +419,26 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
       s.state.status = "error";
       s.state.lastError = uzbekError(code, err.message);
       console.log(`❌ [${sessionId}] createBot threw:`, err.message);
-      if (!s.state.stopping) scheduleReconnect(sessionId, FAST_RETRY_MS);
+      // No bot instance exists, so no 'end' event will ever fire for this
+      // attempt — this is the one case where we schedule directly.
+      if (!s.state.stopping) scheduleReconnect(sessionId);
     }
     return null;
   }
 
   // Connect-phase timeout: if we never reach 'spawn' (or an error/end that
   // already schedules a retry) within CONNECT_TIMEOUT_MS, the connection is
-  // most likely being silently dropped (no TCP RST, no protocol error) —
-  // e.g. by an upstream proxy/firewall. Force it closed and retry instead of
-  // leaving the UI stuck on "Ulanmoqda..." forever.
+  // most likely still being negotiated by a slow-waking Aternos server, or
+  // being silently dropped (no TCP RST, no protocol error) — e.g. by an
+  // upstream proxy/firewall. Force it closed and retry instead of leaving
+  // the UI stuck on "Ulanmoqda..." forever.
   {
     const s0 = sessions.get(sessionId);
     if (s0) {
       if (s0.state.connectTimeoutTimer) clearTimeout(s0.state.connectTimeoutTimer);
       s0.state.connectTimeoutTimer = setTimeout(() => {
         const cur = sessions.get(sessionId);
-        if (!cur || cur.state.stopping) return;
+        if (!cur || cur.state.stopping || cur.bot !== newBot) return;
         if (cur.state.status === "connecting") {
           console.log(`⌛ [${sessionId}] Connect timeout after ${CONNECT_TIMEOUT_MS / 1000}s (no response from server), retrying`);
           cur.state.lastError = uzbekError("no_response");
@@ -339,7 +446,7 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
             newBot.end("connect_timeout");
           } catch (e) {
             // end() itself may throw if the socket never opened; force retry directly
-            scheduleReconnect(sessionId, FAST_RETRY_MS);
+            scheduleReconnect(sessionId);
           }
         }
       }, CONNECT_TIMEOUT_MS);
@@ -348,7 +455,7 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
 
   newBot.once("spawn", () => {
     const s = sessions.get(sessionId);
-    if (!s) return;
+    if (!s || s.bot !== newBot) return;
     if (s.state.connectTimeoutTimer) {
       clearTimeout(s.state.connectTimeoutTimer);
       s.state.connectTimeoutTimer = null;
@@ -356,42 +463,59 @@ function spawnBot({ host, port, username, authMode, version }, sessionId) {
     s.state.status = "online";
     s.state.msaLogin = null;
     s.state.lastError = null;
-    console.log(`✅ [${sessionId}] Connected to ${host}:${port} as ${username} (v${version})`);
+    s.state.reconnectAttempts = 0;   // successful spawn resets the backoff
+    s.state.versionFailStreak = 0;
+    console.log(`✅ [${sessionId}] Connected to ${host}:${port} as ${username} (v${newBot.version || versionToUse || "auto"})`);
 
     startHumanActions(newBot, sessionId);
     startWatchdog(newBot, sessionId);
   });
 
+  // 'kicked' only records what happened and flags a throttle. It never
+  // schedules a reconnect itself — 'end' always fires right after 'kicked'
+  // and is the single place that does that.
   newBot.on("kicked", (reason) => {
     const s = sessions.get(sessionId);
-    if (!s) return;
+    if (!s || s.bot !== newBot) return;
     const code = mapKickToCode(reason);
     s.state.lastError = uzbekError(code, typeof reason === "string" ? reason : JSON.stringify(reason));
     console.log(`👢 [${sessionId}] Kicked (${code}):`, reason);
+    if (isThrottleText(reason)) {
+      console.log(`🐢 [${sessionId}] Aternos throttle detected — next reconnect will use an extended delay`);
+      s.state.wasThrottled = true;
+    }
   });
 
+  // 'error' only records what happened. It never schedules a reconnect
+  // itself — 'end' fires right after and is the single reconnect trigger.
+  // (Scheduling from both used to create two competing reconnect timers
+  // per drop, which is what produced the rapid-fire retry loop.)
   newBot.on("error", (err) => {
     const s = sessions.get(sessionId);
-    if (!s) return;
+    if (!s || s.bot !== newBot) return;
     const code = mapErrorToCode(err);
     s.state.lastError = uzbekError(code, err.message);
     console.log(`❌ [${sessionId}] Error (${code}):`, err.code || err.message);
 
-    if (!s.state.stopping) {
-      const looksOffline = code === "connection_refused" || code === "dns_error" || code === "timeout" || code === "firewall_blocked";
-      s.state.status = "error";
-      scheduleReconnect(sessionId, looksOffline ? SLOW_RETRY_MS : FAST_RETRY_MS);
+    if (code === "unsupported_version" || code === "protocol_error") {
+      s.state.versionFailStreak = (s.state.versionFailStreak || 0) + 1;
+      if (s.state.versionFailStreak >= 2 && s.state.effectiveVersion !== false) {
+        console.log(`🔄 [${sessionId}] Repeated version/protocol errors — falling back to auto-detect version`);
+        s.state.effectiveVersion = false;
+      }
     }
+
+    if (!s.state.stopping) s.state.status = "error";
   });
 
   newBot.on("end", () => {
     const s = sessions.get(sessionId);
-    if (!s) return;
+    if (!s || s.bot !== newBot) return;
     clearAllTimers(s.state);
     if (s.state.stopping) return;
 
     console.log(`🔌 [${sessionId}] Disconnected, scheduling reconnect...`);
-    scheduleReconnect(sessionId, FAST_RETRY_MS);
+    scheduleReconnect(sessionId);
   });
 
   return newBot;
@@ -447,16 +571,27 @@ app.post("/api/bot/start", (req, res) => {
     state.username = username.trim();
     state.authMode = authMode === "premium" ? "premium" : "cracked";
     state.version = version.trim();
+    state.effectiveVersion = state.version;
     state.status = "connecting";
     state.startedAt = Date.now();
     state.durationMinutes = durationMinutes ? Number(durationMinutes) : null;
 
+    sessions.set(sessionId, { bot: null, state });
+
     const bot = spawnBot(
-      { host: state.host, port: state.port, username: state.username, authMode: state.authMode, version: state.version },
+      {
+        host: state.host,
+        port: state.port,
+        username: state.username,
+        authMode: state.authMode,
+        version: state.version,
+        effectiveVersion: state.effectiveVersion,
+      },
       sessionId
     );
 
-    sessions.set(sessionId, { bot, state });
+    const session = sessions.get(sessionId);
+    if (session) session.bot = bot;
 
     if (state.durationMinutes) {
       state.stopTimer = setTimeout(() => {
@@ -503,6 +638,11 @@ app.get("/api/versions", (req, res) => {
   res.json({ versions: SUPPORTED_VERSIONS });
 });
 
+// ---- Health check (useful for uptime monitors / free-tier host pings) ----
+app.get("/", (req, res) => {
+  res.json({ status: "ok", activeSessions: sessions.size, maxSessions: MAX_CONCURRENT_BOTS });
+});
+
 function publicState(sessionId) {
   const s = sessions.get(sessionId);
   if (!s) return { status: "offline" };
@@ -520,6 +660,77 @@ function publicState(sessionId) {
   };
 }
 
+// ---------------------------------------------------------------------
+// CRASH RECOVERY — this is the single most important fix ported over.
+// mineflayer / node-minecraft-protocol can throw a raw socket write error
+// (ECONNRESET, EPIPE, "write after end", "This socket has been ended",
+// PartialReadError) from deep inside its own internals — completely
+// outside any of our try/catch blocks. Without a process-level handler,
+// that one exception kills the entire Node process and takes down every
+// user's bot at once, which is exactly the pattern visible in the logs
+// (a clean disconnect, immediately followed by an uncaught ECONNRESET
+// write error with no further log lines after it — the process died).
+// ---------------------------------------------------------------------
+function isRecoverableNetworkError(msg) {
+  return (
+    msg.includes("ECONNRESET") ||
+    msg.includes("EPIPE") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("PartialReadError") ||
+    msg.includes("write after end") ||
+    msg.includes("This socket has been ended") ||
+    msg.includes("timed out")
+  );
+}
+
+process.on("uncaughtException", (err) => {
+  const msg = err && err.message ? err.message : String(err);
+  console.error("💥 [FATAL] Uncaught exception:", msg);
+
+  if (isRecoverableNetworkError(msg)) {
+    console.error("🩹 Known network/protocol error — backend stays alive, affected session(s) will auto-reconnect.");
+  } else {
+    console.error("🩹 Unknown error type — backend stays alive rather than crashing all sessions. Consider reporting this.");
+  }
+  // Deliberately NOT rethrowing / exiting: crashing here would kill every
+  // other user's bot along with the one that hit the error. Any session
+  // whose bot actually died will already have its own 'end'/'error'
+  // handlers scheduling a reconnect; there is nothing else to do here.
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = String(reason && reason.message ? reason.message : reason);
+  console.error("💥 [FATAL] Unhandled rejection:", msg);
+  if (isRecoverableNetworkError(msg)) {
+    console.error("🩹 Known network/protocol error — backend stays alive, affected session(s) will auto-reconnect.");
+  } else {
+    console.error("🩹 Unknown error type — backend stays alive rather than crashing all sessions. Consider reporting this.");
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🟢 Minecraft bot backend running on port ${PORT}`);
 });
+
+// ---------------------------------------------------------------------
+// Optional self-ping keep-alive for free-tier hosts (Render, etc.) that
+// spin the service down after a period of inactivity. Set SELF_URL to
+// this service's own public URL to enable it; harmless if left unset.
+// ---------------------------------------------------------------------
+const SELF_URL = process.env.SELF_URL || process.env.RENDER_EXTERNAL_URL;
+if (SELF_URL) {
+  const https = require("https");
+  const http = require("http");
+  const SELF_PING_INTERVAL_MS = 10 * 60 * 1000;
+  setInterval(() => {
+    try {
+      const protocol = SELF_URL.startsWith("https") ? https : http;
+      protocol.get(SELF_URL, (res) => { res.resume(); }).on("error", (e) => {
+        console.log("⚠️  Self-ping failed:", e.message);
+      });
+    } catch (e) {
+      /* ignore */
+    }
+  }, SELF_PING_INTERVAL_MS);
+  console.log(`💓 Self-ping keep-alive enabled -> ${SELF_URL} every ${SELF_PING_INTERVAL_MS / 60000}min`);
+}
